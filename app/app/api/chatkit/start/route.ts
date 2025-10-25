@@ -1,6 +1,8 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { randomUUID } from "node:crypto";
+import { CHATKIT_AUTH_COOKIE, issueAuthToken, verifyAuthToken } from "../../../../chat/chatkit-auth";
 
 type StartRequest = {
   userId?: string;
@@ -59,13 +61,10 @@ export async function POST(request: Request) {
     return missingConfig("Server missing CHATKIT_DOMAIN_KEY", 500);
   }
 
-  const headerKey = request.headers.get("x-chatkit-domain-key");
-  if (!headerKey || headerKey !== DOMAIN_KEY) {
-    return NextResponse.json(
-      { error: "Invalid domain key" } satisfies ErrorResponse,
-      { status: 403 },
-    );
-  }
+  const cookieStore = cookies();
+  const authToken = cookieStore.get(CHATKIT_AUTH_COOKIE)?.value;
+  const hasValidAuth = authToken ? verifyAuthToken(authToken, DOMAIN_KEY) : false;
+  const cookieToSet = hasValidAuth ? null : issueAuthToken(DOMAIN_KEY);
 
   let body: StartRequest | null = null;
   if (request.headers.get("content-type")?.includes("application/json")) {
@@ -84,7 +83,7 @@ export async function POST(request: Request) {
 
   try {
     const session = await createSession(userId, body?.stateVariables);
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         clientSecret: session.client_secret,
         expiresAt: session.expires_at,
@@ -93,6 +92,18 @@ export async function POST(request: Request) {
       } satisfies StartResponse,
       { status: 201 },
     );
+    if (cookieToSet) {
+      response.cookies.set({
+        name: CHATKIT_AUTH_COOKIE,
+        value: cookieToSet.token,
+        httpOnly: true,
+        secure: true,
+        sameSite: "strict",
+        maxAge: cookieToSet.maxAge,
+        path: "/",
+      });
+    }
+    return response;
   } catch (error) {
     console.error("Unable to create ChatKit session", error);
     return NextResponse.json(

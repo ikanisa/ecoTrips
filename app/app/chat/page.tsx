@@ -22,5 +22,5 @@ export default function ChatPage() {
     );
   }
 
-  return <ChatKitClient domainKey={domainKey} />;
+  return <ChatKitClient />;
 }
