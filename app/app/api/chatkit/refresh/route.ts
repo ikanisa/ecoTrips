@@ -1,5 +1,7 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { CHATKIT_AUTH_COOKIE, verifyAuthToken } from "../../../../chat/chatkit-auth";
 
 type RefreshRequest = {
   userId: string;
@@ -56,10 +58,11 @@ export async function POST(request: Request) {
     return configMissing("CHATKIT_DOMAIN_KEY");
   }
 
-  const headerKey = request.headers.get("x-chatkit-domain-key");
-  if (!headerKey || headerKey !== DOMAIN_KEY) {
+  const cookieStore = cookies();
+  const authToken = cookieStore.get(CHATKIT_AUTH_COOKIE)?.value;
+  if (!authToken || !verifyAuthToken(authToken, DOMAIN_KEY)) {
     return NextResponse.json(
-      { error: "Invalid domain key" } satisfies ErrorResponse,
+      { error: "Missing or invalid session" } satisfies ErrorResponse,
       { status: 403 },
     );
   }

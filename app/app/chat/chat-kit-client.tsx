@@ -1,11 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
-
-type ChatKitClientProps = {
-  domainKey: string;
-};
 
 type SessionResponse = {
   clientSecret: string;
@@ -35,20 +31,12 @@ function writeStoredUserId(userId: string) {
   }
 }
 
-export function ChatKitClient({ domainKey }: ChatKitClientProps) {
+export function ChatKitClient() {
   const userIdRef = useRef<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [status, setStatus] = useState<string>("Idle");
   const [error, setError] = useState<string | null>(null);
-
-  const headers = useMemo(
-    () => ({
-      "Content-Type": "application/json",
-      "x-chatkit-domain-key": domainKey,
-    }),
-    [domainKey],
-  );
 
   const getClientSecret = useCallback(
     async (currentClientSecret: string | null) => {
@@ -68,9 +56,12 @@ export function ChatKitClient({ domainKey }: ChatKitClientProps) {
 
       const response = await fetch(endpoint, {
         method: "POST",
-        headers,
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(payload),
         cache: "no-store",
+        credentials: "include",
       });
 
       if (!response.ok) {
@@ -100,7 +91,7 @@ export function ChatKitClient({ domainKey }: ChatKitClientProps) {
       setError(null);
       return data.clientSecret;
     },
-    [headers],
+    [],
   );
 
   const { control, ref } = useChatKit({
