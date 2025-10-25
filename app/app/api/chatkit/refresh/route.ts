@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { CHATKIT_AUTH_COOKIE, verifyAuthToken } from "../../../../chat/chatkit-auth";
+import { CHATKIT_AUTH_COOKIE, issueAuthToken, verifyAuthToken } from "../../../../chat/chatkit-auth";
 
 type RefreshRequest = {
   userId: string;
@@ -60,12 +60,8 @@ export async function POST(request: Request) {
 
   const cookieStore = cookies();
   const authToken = cookieStore.get(CHATKIT_AUTH_COOKIE)?.value;
-  if (!authToken || !verifyAuthToken(authToken, DOMAIN_KEY)) {
-    return NextResponse.json(
-      { error: "Missing or invalid session" } satisfies ErrorResponse,
-      { status: 403 },
-    );
-  }
+  const hasValidAuth = authToken ? verifyAuthToken(authToken, DOMAIN_KEY) : false;
+  const cookieToSet = hasValidAuth ? null : issueAuthToken(DOMAIN_KEY);
 
   let body: RefreshRequest | null = null;
   if (request.headers.get("content-type")?.includes("application/json")) {
@@ -90,7 +86,7 @@ export async function POST(request: Request) {
 
   try {
     const session = await issueSession(userId, body?.stateVariables);
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         clientSecret: session.client_secret,
         expiresAt: session.expires_at,
@@ -99,6 +95,18 @@ export async function POST(request: Request) {
       } satisfies RefreshResponse,
       { status: 200 },
     );
+    if (cookieToSet) {
+      response.cookies.set({
+        name: CHATKIT_AUTH_COOKIE,
+        value: cookieToSet.token,
+        httpOnly: true,
+        secure: true,
+        sameSite: "strict",
+        maxAge: cookieToSet.maxAge,
+        path: "/",
+      });
+    }
+    return response;
   } catch (error) {
     console.error("Unable to refresh ChatKit session", error);
     return NextResponse.json(
